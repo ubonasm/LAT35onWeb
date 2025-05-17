@@ -17,8 +17,8 @@ matplotlib.use('Agg')  # バックエンドをAggに設定
 import japanize_matplotlib  # 日本語フォントのサポート
 
 # タイトルとサイドバーの設定
-st.set_page_config(page_title="Tool for Transcript Analysis", layout="wide")
-st.title("Tool for Transcript Analysis")
+st.set_page_config(page_title="LAT35 on the web (simple version)", layout="wide")
+st.title("LAT35 on the web")
 st.sidebar.header("setting...")
 
 # 言語モデルの選択肢
