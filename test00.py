@@ -17,23 +17,107 @@ matplotlib.use('Agg')  # バックエンドをAggに設定
 import japanize_matplotlib  # 日本語フォントのサポート
 
 # タイトルとサイドバーの設定
-st.set_page_config(page_title="LAT35 on the web (simple version)", layout="wide")
-st.title("LAT35 on the web")
+st.set_page_config(page_title="Tool for Transcript Analysis", layout="wide")
+st.title("Tool for Transcript Analysis")
 st.sidebar.header("setting...")
 
+# 言語モデルの選択肢
+language_models = {
+    "日本語": ["ja_core_news_sm", "ja_core_news_md", "ja_core_news_lg"],
+    "英語": ["en_core_web_sm", "en_core_web_md", "en_core_web_lg"],
+    "韓国語": ["ko_core_news_sm", "ko_core_news_md", "ko_core_news_lg"],
+    "中国語": ["zh_core_web_sm", "zh_core_web_md", "zh_core_web_lg"],
+    "フランス語": ["fr_core_news_sm", "fr_core_news_md", "fr_core_news_lg"]
+}
 
-# spaCyの日本語モデルをロード
+# 言語選択
+selected_language = st.sidebar.selectbox(
+    "言語を選択",
+    list(language_models.keys()),
+    index=0
+)
+
+# 選択された言語のモデルを表示
+selected_model = st.sidebar.selectbox(
+    "言語モデルを選択",
+    language_models[selected_language],
+    index=0
+)
+
+# 言語ごとの品詞マッピング
+pos_mappings = {
+    "日本語": {
+        "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
+        "助詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
+        "接続詞": "CCONJ", "感動詞": "INTJ"
+    },
+    "英語": {
+        "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
+        "前置詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
+        "接続詞": "CCONJ", "感嘆詞": "INTJ"
+    },
+    "韓国語": {
+        "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
+        "助詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
+        "接続詞": "CCONJ", "感動詞": "INTJ"
+    },
+    "中国語": {
+        "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
+        "介詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
+        "連詞": "CCONJ", "感嘆詞": "INTJ"
+    },
+    "フランス語": {
+        "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
+        "前置詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
+        "接続詞": "CCONJ", "間投詞": "INTJ"
+    }
+}
+
+# 言語ごとのデフォルト除外品詞
+default_exclude_pos = {
+    "日本語": ["助詞", "助動詞", "記号", "空白"],
+    "英語": ["前置詞", "助動詞", "記号", "空白"],
+    "韓国語": ["助詞", "助動詞", "記号", "空白"],
+    "中国語": ["介詞", "助動詞", "記号", "空白"],
+    "フランス語": ["前置詞", "助動詞", "記号", "空白"]
+}
+
+# 言語ごとのデフォルトストップワード
+default_stop_words = {
+    "日本語": "です,ます,ございます,はい,えー,あの,その,この",
+    "英語": "the,a,an,and,or,but,is,are,was,were,be,been,being,have,has,had,do,does,did,will,would,shall,should,can,could,may,might,must",
+    "韓国語": "이,그,저,이것,그것,저것,이거,그거,저거,이런,그런,저런,하다,있다,되다,없다,않다",
+    "中国語": "的,了,和,是,在,有,就,不,也,这,那,我,你,他,她,它,们",
+    "フランス語": "le,la,les,un,une,des,du,de,et,ou,mais,donc,car,est,sont,était,étaient,être,avoir,faire,aller"
+}
+
+# 言語ごとのフォント設定
+font_settings = {
+    "日本語": ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic',
+               'Noto Sans CJK JP'],
+    "英語": ['Arial', 'Helvetica', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans'],
+    "韓国語": ['Malgun Gothic', 'Gulim', 'Dotum', 'Batang', 'Noto Sans CJK KR'],
+    "中国語": ['SimHei', 'SimSun', 'NSimSun', 'FangSong', 'Noto Sans CJK SC'],
+    "フランス語": ['Arial', 'Helvetica', 'DejaVu Sans', 'Liberation Sans', 'Noto Sans']
+}
+
+
+# spaCyの言語モデルをロード
 @st.cache_resource
-def load_nlp_model():
+def load_nlp_model(model_name):
     try:
-        return spacy.load("ja_core_news_sm")
+        return spacy.load(model_name)
     except OSError:
-        st.warning("日本語モデルをダウンロードしています...")
-        spacy.cli.download("ja_core_news_sm")
-        return spacy.load("ja_core_news_sm")
+        st.warning(f"{model_name}モデルをダウンロードしています...")
+        spacy.cli.download(model_name)
+        return spacy.load(model_name)
 
 
-nlp = load_nlp_model()
+# 選択されたモデルをロード
+nlp = load_nlp_model(selected_model)
+
+# フォント設定を適用
+plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
 # CSVファイルのアップロード
 uploaded_file = st.sidebar.file_uploader("upload Transcript(CSV format) to server", type=["csv"])
@@ -50,20 +134,16 @@ analysis_options = st.sidebar.multiselect(
 # 除外する品詞
 exclude_pos = st.sidebar.multiselect(
     "除外する品詞",
-    ["助詞", "助動詞", "記号", "空白", "接続詞", "感動詞"],
-    default=["助詞", "助動詞", "記号", "空白"]
+    list(pos_mappings[selected_language].keys()),
+    default=default_exclude_pos[selected_language]
 )
 
 # 除外する単語
-stop_words = st.sidebar.text_area("除外する単語（カンマ区切り）", "です,ます,ございます,はい,えー,あの,その,この")
+stop_words = st.sidebar.text_area("除外する単語（カンマ区切り）", default_stop_words[selected_language])
 stop_words = [word.strip() for word in stop_words.split(",")]
 
-# 品詞マッピング
-pos_mapping = {
-    "名詞": "NOUN", "動詞": "VERB", "形容詞": "ADJ", "副詞": "ADV",
-    "助詞": "ADP", "助動詞": "AUX", "記号": "PUNCT", "空白": "SPACE",
-    "接続詞": "CCONJ", "感動詞": "INTJ"
-}
+# 選択された言語の品詞マッピングを使用
+pos_mapping = pos_mappings[selected_language]
 
 # 除外する品詞のspaCy形式への変換
 exclude_pos_spacy = [pos_mapping.get(pos, pos) for pos in exclude_pos]
@@ -159,8 +239,7 @@ def visualize_interaction_patterns(df, n_gram_size=2, top_n=10):
 
     # 時系列可視化のための準備
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
     # 各発言者に色を割り当て
     speakers = sorted(set(speaker_sequence))
@@ -254,8 +333,7 @@ def visualize_pattern_network(df, n_gram_size=2, min_count=2):
     if G.number_of_nodes() > 0:
         # グラフの描画
         fig, ax = plt.subplots(figsize=(14, 12))
-        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                           'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+        plt.rcParams['font.sans-serif'] = font_settings[selected_language]
         pos = nx.spring_layout(G, seed=42)
 
         # エッジの太さを重みに比例させる
@@ -306,8 +384,7 @@ def visualize_pattern_heatmap(df, n_gram_size=2, top_n=20):
 
     # ヒートマップの描画
     fig, ax = plt.subplots(figsize=(12, len(patterns) * 0.4 + 2))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
     # カラーマップの作成（青から赤へのグラデーション）
     cmap = LinearSegmentedColormap.from_list("custom_cmap", ["#4575b4", "#ffffbf", "#d73027"])
@@ -347,8 +424,7 @@ def visualize_pattern_distribution(df, n_gram_size=2, top_n=5):
 
     # 時間的分布の可視化
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
     # 各パターンの出現位置を記録
     pattern_positions = {}
@@ -375,7 +451,7 @@ def visualize_pattern_distribution(df, n_gram_size=2, top_n=5):
     return fig, pattern_positions
 
 
-# 新機能1: 教師と児童生徒の発言量を可視化する関数
+# 教師と児童生徒の発言量を可視化する関数
 def visualize_teacher_student_utterances(df, teacher_keywords=None):
     """
     教師と児童生徒の発言量を棒グラフで可視化する
@@ -403,8 +479,7 @@ def visualize_teacher_student_utterances(df, teacher_keywords=None):
 
     # グラフの作成
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
     # 全発言番号のリスト
     all_utterance_numbers = df["発言番号"].tolist()
@@ -457,7 +532,7 @@ def visualize_teacher_student_utterances(df, teacher_keywords=None):
     return fig
 
 
-# 新機能2: 注目する語の累積相対度数を可視化する関数
+# 注目する語の累積相対度数を可視化する関数
 def visualize_word_cumulative_frequency(df, target_words):
     """
     注目する語の累積相対度数をグラフで可視化する
@@ -500,8 +575,7 @@ def visualize_word_cumulative_frequency(df, target_words):
 
     # グラフの作成
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
-                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
     # 色のリスト
     colors = plt.cm.tab10(np.linspace(0, 1, len(target_words)))
@@ -573,13 +647,13 @@ if uploaded_file is not None:
             st.write(f"総発言数: {len(df)}")
             st.write(f"発言者数: {df['発言者'].nunique()}")
             st.write(f"総単語数: {len(words)}")
+            st.write(f"使用言語モデル: {selected_model}")
 
             # 発言者ごとの発言数
             speaker_counts = df["発言者"].value_counts()
             st.subheader("発言者ごとの発言数")
             fig, ax = plt.subplots(figsize=(10, 6))
-            plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                               'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+            plt.rcParams['font.sans-serif'] = font_settings[selected_language]
             speaker_counts.plot(kind="bar", ax=ax)
             plt.title("発言者ごとの発言数")
             plt.ylabel("発言数")
@@ -593,6 +667,7 @@ if uploaded_file is not None:
 
             # 分析結果に追加
             analysis_results["発言者ごとの発言数"] = speaker_counts.to_dict()
+            analysis_results["使用言語モデル"] = selected_model
 
         tab_index = 1
 
@@ -608,8 +683,7 @@ if uploaded_file is not None:
                 # 頻出単語のグラフ
                 st.subheader("頻出単語トップ30")
                 fig, ax = plt.subplots(figsize=(12, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                 words_df = pd.DataFrame(most_common, columns=["単語", "出現回数"])
                 sns.barplot(x="出現回数", y="単語", data=words_df, ax=ax)
                 plt.title("頻出単語トップ30")
@@ -622,24 +696,27 @@ if uploaded_file is not None:
 
                 # ワードクラウド
                 st.subheader("WordCloud")
-                wordcloud = WordCloud(
-                    width=800, height=400,
-                    background_color="white",
-                    font_path="/usr/share/fonts/truetype/fonts-japanese-gothic.ttf" if os.path.exists(
-                        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf") else None,
-                    max_words=100
-                ).generate(" ".join(words))
+                try:
+                    wordcloud = WordCloud(
+                        width=800, height=400,
+                        background_color="white",
+                        font_path="/usr/share/fonts/truetype/fonts-japanese-gothic.ttf" if os.path.exists(
+                            "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf") else None,
+                        max_words=100
+                    ).generate(" ".join(words))
 
-                fig, ax = plt.subplots(figsize=(12, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
-                ax.imshow(wordcloud, interpolation="bilinear")
-                ax.axis("off")
-                st.pyplot(fig)
+                    fig, ax = plt.subplots(figsize=(12, 8))
+                    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
+                    ax.imshow(wordcloud, interpolation="bilinear")
+                    ax.axis("off")
+                    st.pyplot(fig)
 
-                # 図の保存
-                save_path = save_figure(fig, "wordcloud.png")
-                st.success(f"ワードクラウドを保存しました: {save_path}")
+                    # 図の保存
+                    save_path = save_figure(fig, "wordcloud.png")
+                    st.success(f"ワードクラウドを保存しました: {save_path}")
+                except Exception as e:
+                    st.warning(f"ワードクラウドの生成中にエラーが発生しました: {e}")
+                    st.info("選択した言語によっては、適切なフォントが必要な場合があります。")
 
                 # 分析結果に追加
                 analysis_results["頻出単語"] = dict(most_common)
@@ -663,9 +740,7 @@ if uploaded_file is not None:
                     st.subheader(f"{speaker}の特徴的な単語")
                     if counts:
                         fig, ax = plt.subplots(figsize=(10, 6))
-                        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                           'IPAexGothic', 'IPAPGothic', 'VL PGothic',
-                                                           'Noto Sans CJK JP']
+                        plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                         words_df = pd.DataFrame(counts, columns=["単語", "出現回数"])
                         sns.barplot(x="出現回数", y="単語", data=words_df, ax=ax)
                         plt.title(f"{speaker}の特徴的な単語")
@@ -682,8 +757,7 @@ if uploaded_file is not None:
                 speaker_lengths = df.groupby("発言者")["発言内容"].apply(lambda x: x.str.len().mean())
                 st.subheader("発言者ごとの平均発言長")
                 fig, ax = plt.subplots(figsize=(10, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                 speaker_lengths.plot(kind="bar", ax=ax)
                 plt.title("発言者ごとの平均発言長（文字数）")
                 plt.ylabel("平均文字数")
@@ -738,8 +812,7 @@ if uploaded_file is not None:
 
                 # グラフの描画
                 fig, ax = plt.subplots(figsize=(12, 10))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                 pos = nx.spring_layout(G, seed=42)
 
                 # ノードの描画
@@ -832,8 +905,7 @@ if uploaded_file is not None:
                 if G_cooccurrence.number_of_nodes() > 0:
                     # グラフの描画
                     fig, ax = plt.subplots(figsize=(14, 12))
-                    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                       'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                    plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                     pos = nx.spring_layout(G_cooccurrence, seed=42)
 
                     # ノードサイズを出現回数に比例させる
@@ -879,8 +951,7 @@ if uploaded_file is not None:
                 df["発言長"] = df["発言内容"].str.len()
 
                 fig, ax = plt.subplots(figsize=(14, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                 plt.plot(df["発言番号"], df["発言長"], marker="o", linestyle="-", alpha=0.7)
                 plt.title("発言の時系列パターン（発言長）")
                 plt.xlabel("発言番号")
@@ -897,8 +968,7 @@ if uploaded_file is not None:
 
                 # 発言者ごとに色分け
                 fig, ax = plt.subplots(figsize=(14, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
                 speakers = df["発言者"].unique()
 
                 for i, speaker in enumerate(speakers):
@@ -1016,8 +1086,7 @@ if uploaded_file is not None:
 
                 # 発言順序を時系列でプロット
                 fig, ax = plt.subplots(figsize=(15, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
-                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = font_settings[selected_language]
 
                 for i, speaker in enumerate(speaker_sequence):
                     ax.scatter(i, 0, color=speaker_colors[speaker], s=100, alpha=0.7)
@@ -1052,17 +1121,26 @@ if uploaded_file is not None:
 
             tab_index += 1
 
-        # 新機能1: 教師・児童生徒発言量分析
+        # 教師・児童生徒発言量分析
         if "教師・児童生徒発言量分析" in analysis_options:
             with tabs[tab_index]:
                 st.header("教師・児童生徒発言量分析")
 
                 # 教師を識別するキーワードの設定
                 st.subheader("教師を識別するキーワードの設定")
-                default_teacher_keywords = ["教師", "先生", "T", "Teacher"]
+
+                # 言語に応じたデフォルトの教師キーワード
+                teacher_keywords_default = {
+                    "日本語": "教師,先生,T,Teacher",
+                    "英語": "teacher,instructor,T,professor",
+                    "韓国語": "교사,선생님,T,Teacher",
+                    "中国語": "老师,教师,T,Teacher",
+                    "フランス語": "professeur,enseignant,T,Teacher"
+                }
+
                 teacher_keywords_input = st.text_area(
                     "教師を識別するキーワード（カンマ区切り）",
-                    ",".join(default_teacher_keywords)
+                    teacher_keywords_default[selected_language]
                 )
                 teacher_keywords = [keyword.strip() for keyword in teacher_keywords_input.split(",")]
 
@@ -1083,26 +1161,42 @@ if uploaded_file is not None:
 
                 st.write(f"教師の総発言量: {teacher_utterances} 文字")
                 st.write(f"児童生徒の総発言量: {student_utterances} 文字")
-                st.write(f"児童生徒/教師の発言量比率: {student_utterances / teacher_utterances:.2f}")
+
+                if teacher_utterances > 0:
+                    st.write(f"児童生徒/教師の発言量比率: {student_utterances / teacher_utterances:.2f}")
+                    ratio = float(student_utterances / teacher_utterances)
+                else:
+                    st.write("教師の発言が見つかりません。キーワードを確認してください。")
+                    ratio = float('inf')
 
                 analysis_results["教師児童生徒発言量"] = {
                     "教師総発言量": int(teacher_utterances),
                     "児童生徒総発言量": int(student_utterances),
-                    "発言量比率": float(student_utterances / teacher_utterances)
+                    "発言量比率": ratio
                 }
 
             tab_index += 1
 
-        # 新機能2: 注目語累積分析
+        # 注目語累積分析
         if "注目語累積分析" in analysis_options:
             with tabs[tab_index]:
                 st.header("注目語累積分析")
 
                 # 注目する語の入力
                 st.subheader("注目する語の入力")
+
+                # 言語に応じたデフォルトの注目語
+                default_target_words = {
+                    "日本語": "学習,考える,理解,問題,発表",
+                    "英語": "learn,think,understand,problem,present",
+                    "韓国語": "학습,생각,이해,문제,발표",
+                    "中国語": "学习,思考,理解,问题,发表",
+                    "フランス語": "apprendre,penser,comprendre,problème,présenter"
+                }
+
                 target_words_input = st.text_area(
                     "注目する語（カンマ区切り、最大10語）",
-                    "学習,考える,理解,問題,発表"
+                    default_target_words[selected_language]
                 )
                 target_words = [word.strip() for word in target_words_input.split(",")][:10]  # 最大10語に制限
 
@@ -1143,3 +1237,27 @@ if uploaded_file is not None:
         if st.sidebar.button("分析結果をJSONで保存"):
             json_path = save_analysis_results(analysis_results)
             st.sidebar.success(f"分析結果をJSONで保存しました: {json_path}")
+else:
+    st.info("CSVファイルをアップロードしてください。")
+
+    # 言語モデルの情報表示
+    st.header("言語モデルについて")
+    st.write(f"現在選択されている言語: {selected_language}")
+    st.write(f"現在選択されているモデル: {selected_model}")
+
+    # 各言語モデルの説明
+    model_descriptions = {
+        "sm": "小サイズモデル: 軽量で高速、基本的な言語処理に適しています。",
+        "md": "中サイズモデル: バランスの取れた性能と速度、一般的な分析に推奨。",
+        "lg": "大サイズモデル: 高精度だが処理速度は遅い、詳細な分析に適しています。"
+    }
+
+    st.subheader("モデルサイズの説明")
+    for size, desc in model_descriptions.items():
+        st.write(f"**{size}**: {desc}")
+
+    st.subheader("使用方法")
+    st.write("1. サイドバーから言語と言語モデルを選択")
+    st.write("2. CSVファイルをアップロード（発言番号、発言者、発言内容の列が必要）")
+    st.write("3. 分析項目を選択して結果を確認")
+    st.write("4. 必要に応じて分析結果をJSONで保存")
