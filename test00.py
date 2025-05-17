@@ -36,7 +36,7 @@ def load_nlp_model():
 nlp = load_nlp_model()
 
 # CSVファイルのアップロード
-uploaded_file = st.sidebar.file_uploader("upload Transcript(CSV format) to server", type=["csv"])
+uploaded_file = st.sidebar.file_uploader("upload Transcript(CSV format) to server\n項目が「発言番号」「発言者」「発言内容」と書かれている必要があります", type=["csv"])
 
 # 分析設定
 analysis_options = st.sidebar.multiselect(
