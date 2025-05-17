@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import spacy
-# import spacy_streamlit
 import json
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -18,9 +17,9 @@ matplotlib.use('Agg')  # バックエンドをAggに設定
 import japanize_matplotlib  # 日本語フォントのサポート
 
 # タイトルとサイドバーの設定
-st.set_page_config(page_title="授業分析ツール", layout="wide")
-st.title("授業分析ツール")
-st.sidebar.header("設定")
+st.set_page_config(page_title="Tool for Transcript Analysis", layout="wide")
+st.title("Tool for Transcript Analysis")
+st.sidebar.header("setting...")
 
 
 # spaCyの日本語モデルをロード
@@ -37,14 +36,15 @@ def load_nlp_model():
 nlp = load_nlp_model()
 
 # CSVファイルのアップロード
-uploaded_file = st.sidebar.file_uploader("授業記録CSVファイルをアップロード", type=["csv"])
+uploaded_file = st.sidebar.file_uploader("upload Transcript(CSV format) to server", type=["csv"])
 
 # 分析設定
 analysis_options = st.sidebar.multiselect(
     "分析項目を選択",
     ["頻出単語分析", "発言者別分析", "発言パターン分析", "単語共起ネットワーク", "時系列分析",
-     "インタラクションパターン分析"],
-    default=["頻出単語分析", "発言者別分析", "インタラクションパターン分析"]
+     "インタラクションパターン分析", "教師・児童生徒発言量分析", "注目語累積分析"],
+    default=["頻出単語分析", "発言者別分析", "インタラクションパターン分析", "教師・児童生徒発言量分析",
+             "注目語累積分析"]
 )
 
 # 除外する品詞
@@ -159,7 +159,8 @@ def visualize_interaction_patterns(df, n_gram_size=2, top_n=10):
 
     # 時系列可視化のための準備
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 
     # 各発言者に色を割り当て
     speakers = sorted(set(speaker_sequence))
@@ -253,7 +254,8 @@ def visualize_pattern_network(df, n_gram_size=2, min_count=2):
     if G.number_of_nodes() > 0:
         # グラフの描画
         fig, ax = plt.subplots(figsize=(14, 12))
-        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                           'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
         pos = nx.spring_layout(G, seed=42)
 
         # エッジの太さを重みに比例させる
@@ -304,7 +306,8 @@ def visualize_pattern_heatmap(df, n_gram_size=2, top_n=20):
 
     # ヒートマップの描画
     fig, ax = plt.subplots(figsize=(12, len(patterns) * 0.4 + 2))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 
     # カラーマップの作成（青から赤へのグラデーション）
     cmap = LinearSegmentedColormap.from_list("custom_cmap", ["#4575b4", "#ffffbf", "#d73027"])
@@ -344,7 +347,8 @@ def visualize_pattern_distribution(df, n_gram_size=2, top_n=5):
 
     # 時間的分布の可視化
     fig, ax = plt.subplots(figsize=(15, 8))
-    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 
     # 各パターンの出現位置を記録
     pattern_positions = {}
@@ -369,6 +373,178 @@ def visualize_pattern_distribution(df, n_gram_size=2, top_n=5):
     ax.legend(loc='upper right')
 
     return fig, pattern_positions
+
+
+# 新機能1: 教師と児童生徒の発言量を可視化する関数
+def visualize_teacher_student_utterances(df, teacher_keywords=None):
+    """
+    教師と児童生徒の発言量を棒グラフで可視化する
+    教師の発言は下向き、児童生徒の発言は上向きに表示
+    """
+    if teacher_keywords is None:
+        teacher_keywords = ["教師", "先生", "T", "Teacher"]
+
+    # 発言者が教師かどうかを判定
+    df["is_teacher"] = df["発言者"].apply(lambda x: any(keyword in x for keyword in teacher_keywords))
+
+    # 発言長を計算
+    df["発言長"] = df["発言内容"].str.len()
+
+    # 教師と児童生徒のデータを分離
+    teacher_df = df[df["is_teacher"]]
+    student_df = df[~df["is_teacher"]]
+
+    # 最大発言長を取得（教師と児童生徒それぞれ）
+    max_teacher_length = teacher_df["発言長"].max() if not teacher_df.empty else 0
+    max_student_length = student_df["発言長"].max() if not student_df.empty else 0
+
+    # Y軸の最大値を設定（最大発言長 + 10）
+    y_max = max(max_teacher_length, max_student_length) + 10
+
+    # グラフの作成
+    fig, ax = plt.subplots(figsize=(15, 8))
+    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+
+    # 全発言番号のリスト
+    all_utterance_numbers = df["発言番号"].tolist()
+
+    # 教師の発言を下向きに表示
+    if not teacher_df.empty:
+        teacher_utterances = []
+        teacher_lengths = []
+
+        for num in all_utterance_numbers:
+            teacher_utterance = teacher_df[teacher_df["発言番号"] == num]
+            if not teacher_utterance.empty:
+                teacher_utterances.append(num)
+                teacher_lengths.append(-teacher_utterance["発言長"].values[0])  # マイナス値で表示
+            else:
+                teacher_utterances.append(num)
+                teacher_lengths.append(0)
+
+        ax.bar(teacher_utterances, teacher_lengths, color='blue', alpha=0.7, label='教師')
+
+    # 児童生徒の発言を上向きに表示
+    if not student_df.empty:
+        student_utterances = []
+        student_lengths = []
+
+        for num in all_utterance_numbers:
+            student_utterance = student_df[student_df["発言番号"] == num]
+            if not student_utterance.empty:
+                student_utterances.append(num)
+                student_lengths.append(student_utterance["発言長"].values[0])
+            else:
+                student_utterances.append(num)
+                student_lengths.append(0)
+
+        ax.bar(student_utterances, student_lengths, color='orange', alpha=0.7, label='児童生徒')
+
+    # グラフの設定
+    ax.set_xlabel('発言番号')
+    ax.set_ylabel('発言量（文字数）')
+    ax.set_title('教師と児童生徒の発言量')
+    ax.set_ylim(-y_max, y_max)  # Y軸の範囲を対称に設定
+    ax.axhline(y=0, color='black', linestyle='-', linewidth=0.5)  # X軸を強調
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+
+    # Y軸のラベルを正の値で表示
+    yticks = ax.get_yticks()
+    ax.set_yticklabels([str(abs(int(y))) for y in yticks])
+
+    return fig
+
+
+# 新機能2: 注目する語の累積相対度数を可視化する関数
+def visualize_word_cumulative_frequency(df, target_words):
+    """
+    注目する語の累積相対度数をグラフで可視化する
+    """
+    if not target_words:
+        return None
+
+    # 最大10語に制限
+    target_words = target_words[:10]
+
+    # 発言内容を形態素解析
+    utterances = df["発言内容"].tolist()
+    utterance_numbers = df["発言番号"].tolist()
+
+    # 各単語の出現位置と累積カウントを記録
+    word_occurrences = {word: [] for word in target_words}
+    word_cumulative_counts = {word: [] for word in target_words}
+
+    # 各発言を分析
+    for i, utterance in enumerate(utterances):
+        doc = nlp(utterance)
+        utterance_number = utterance_numbers[i]
+
+        # 発言内の単語をチェック
+        utterance_words = [token.text.lower() for token in doc]
+
+        for word in target_words:
+            # 現在の累積カウント
+            current_count = word_cumulative_counts[word][-1] if word_cumulative_counts[word] else 0
+
+            # 単語が発言内に含まれているかチェック
+            if word.lower() in utterance_words:
+                # 出現回数をカウント
+                count = utterance_words.count(word.lower())
+                word_occurrences[word].append((utterance_number, count))
+                word_cumulative_counts[word].append(current_count + count)
+            else:
+                # 出現しない場合は前回の累積値を維持
+                word_cumulative_counts[word].append(current_count)
+
+    # グラフの作成
+    fig, ax = plt.subplots(figsize=(15, 8))
+    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic',
+                                       'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+
+    # 色のリスト
+    colors = plt.cm.tab10(np.linspace(0, 1, len(target_words)))
+
+    # 各単語の累積相対度数をプロット
+    for i, word in enumerate(target_words):
+        if not word_cumulative_counts[word]:
+            continue
+
+        # 最大値を取得して正規化
+        max_count = word_cumulative_counts[word][-1]
+        if max_count == 0:
+            continue
+
+        # 正規化された累積カウント
+        normalized_counts = [count / max_count for count in word_cumulative_counts[word]]
+
+        # 正規化された発言番号
+        normalized_numbers = [num / max(utterance_numbers) for num in utterance_numbers[:len(normalized_counts)]]
+
+        # ステップ状のグラフを描画（垂直に上昇）
+        ax.step(normalized_numbers, normalized_counts, where='post',
+                label=f"{word} (合計: {max_count}回)",
+                color=colors[i], linewidth=2, alpha=0.8)
+
+        # 出現位置にマーカーを追加
+        for occurrence in word_occurrences[word]:
+            utterance_num, count = occurrence
+            # 正規化された位置
+            x_pos = utterance_num / max(utterance_numbers)
+            y_pos = word_cumulative_counts[word][utterance_numbers.index(utterance_num)] / max_count
+            ax.scatter(x_pos, y_pos, color=colors[i], s=50, alpha=0.8)
+
+    # グラフの設定
+    ax.set_xlabel('発言番号（相対値）')
+    ax.set_ylabel('出現回数（相対値）')
+    ax.set_title('注目語の累積相対度数')
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.05)
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc='upper left')
+
+    return fig
 
 
 if uploaded_file is not None:
@@ -432,7 +608,8 @@ if uploaded_file is not None:
                 # 頻出単語のグラフ
                 st.subheader("頻出単語トップ30")
                 fig, ax = plt.subplots(figsize=(12, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 words_df = pd.DataFrame(most_common, columns=["単語", "出現回数"])
                 sns.barplot(x="出現回数", y="単語", data=words_df, ax=ax)
                 plt.title("頻出単語トップ30")
@@ -454,7 +631,8 @@ if uploaded_file is not None:
                 ).generate(" ".join(words))
 
                 fig, ax = plt.subplots(figsize=(12, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 ax.imshow(wordcloud, interpolation="bilinear")
                 ax.axis("off")
                 st.pyplot(fig)
@@ -485,7 +663,8 @@ if uploaded_file is not None:
                     st.subheader(f"{speaker}の特徴的な単語")
                     if counts:
                         fig, ax = plt.subplots(figsize=(10, 6))
-                        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic',
+                        plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                           'IPAexGothic', 'IPAPGothic', 'VL PGothic',
                                                            'Noto Sans CJK JP']
                         words_df = pd.DataFrame(counts, columns=["単語", "出現回数"])
                         sns.barplot(x="出現回数", y="単語", data=words_df, ax=ax)
@@ -503,7 +682,8 @@ if uploaded_file is not None:
                 speaker_lengths = df.groupby("発言者")["発言内容"].apply(lambda x: x.str.len().mean())
                 st.subheader("発言者ごとの平均発言長")
                 fig, ax = plt.subplots(figsize=(10, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 speaker_lengths.plot(kind="bar", ax=ax)
                 plt.title("発言者ごとの平均発言長（文字数）")
                 plt.ylabel("平均文字数")
@@ -558,7 +738,8 @@ if uploaded_file is not None:
 
                 # グラフの描画
                 fig, ax = plt.subplots(figsize=(12, 10))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 pos = nx.spring_layout(G, seed=42)
 
                 # ノードの描画
@@ -651,7 +832,8 @@ if uploaded_file is not None:
                 if G_cooccurrence.number_of_nodes() > 0:
                     # グラフの描画
                     fig, ax = plt.subplots(figsize=(14, 12))
-                    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                    plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                       'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                     pos = nx.spring_layout(G_cooccurrence, seed=42)
 
                     # ノードサイズを出現回数に比例させる
@@ -697,7 +879,8 @@ if uploaded_file is not None:
                 df["発言長"] = df["発言内容"].str.len()
 
                 fig, ax = plt.subplots(figsize=(14, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 plt.plot(df["発言番号"], df["発言長"], marker="o", linestyle="-", alpha=0.7)
                 plt.title("発言の時系列パターン（発言長）")
                 plt.xlabel("発言番号")
@@ -714,7 +897,8 @@ if uploaded_file is not None:
 
                 # 発言者ごとに色分け
                 fig, ax = plt.subplots(figsize=(14, 8))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
                 speakers = df["発言者"].unique()
 
                 for i, speaker in enumerate(speakers):
@@ -742,7 +926,7 @@ if uploaded_file is not None:
 
             tab_index += 1
 
-        # インタラクションパターン分析（新機能）
+        # インタラクションパターン分析
         if "インタラクションパターン分析" in analysis_options:
             with tabs[tab_index]:
                 st.header("インタラクションパターン分析")
@@ -832,7 +1016,8 @@ if uploaded_file is not None:
 
                 # 発言順序を時系列でプロット
                 fig, ax = plt.subplots(figsize=(15, 6))
-                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao', 'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
+                plt.rcParams['font.sans-serif'] = ['Hiragino Maru Gothic Pro', 'Yu Gothic', 'Meirio', 'Takao',
+                                                   'IPAexGothic', 'IPAPGothic', 'VL PGothic', 'Noto Sans CJK JP']
 
                 for i, speaker in enumerate(speaker_sequence):
                     ax.scatter(i, 0, color=speaker_colors[speaker], s=100, alpha=0.7)
@@ -864,6 +1049,93 @@ if uploaded_file is not None:
                     "発言順序": speaker_sequence,
                     "発言者一覧": list(speakers)
                 }
+
+            tab_index += 1
+
+        # 新機能1: 教師・児童生徒発言量分析
+        if "教師・児童生徒発言量分析" in analysis_options:
+            with tabs[tab_index]:
+                st.header("教師・児童生徒発言量分析")
+
+                # 教師を識別するキーワードの設定
+                st.subheader("教師を識別するキーワードの設定")
+                default_teacher_keywords = ["教師", "先生", "T", "Teacher"]
+                teacher_keywords_input = st.text_area(
+                    "教師を識別するキーワード（カンマ区切り）",
+                    ",".join(default_teacher_keywords)
+                )
+                teacher_keywords = [keyword.strip() for keyword in teacher_keywords_input.split(",")]
+
+                # 教師と児童生徒の発言量を可視化
+                st.subheader("教師と児童生徒の発言量")
+
+                fig = visualize_teacher_student_utterances(df, teacher_keywords)
+                st.pyplot(fig)
+
+                # 図の保存
+                save_path = save_figure(fig, "teacher_student_utterances.png")
+                st.success(f"教師と児童生徒の発言量グラフを保存しました: {save_path}")
+
+                # 分析結果に追加
+                df["is_teacher"] = df["発言者"].apply(lambda x: any(keyword in x for keyword in teacher_keywords))
+                teacher_utterances = df[df["is_teacher"]]["発言長"].sum()
+                student_utterances = df[~df["is_teacher"]]["発言長"].sum()
+
+                st.write(f"教師の総発言量: {teacher_utterances} 文字")
+                st.write(f"児童生徒の総発言量: {student_utterances} 文字")
+                st.write(f"児童生徒/教師の発言量比率: {student_utterances / teacher_utterances:.2f}")
+
+                analysis_results["教師児童生徒発言量"] = {
+                    "教師総発言量": int(teacher_utterances),
+                    "児童生徒総発言量": int(student_utterances),
+                    "発言量比率": float(student_utterances / teacher_utterances)
+                }
+
+            tab_index += 1
+
+        # 新機能2: 注目語累積分析
+        if "注目語累積分析" in analysis_options:
+            with tabs[tab_index]:
+                st.header("注目語累積分析")
+
+                # 注目する語の入力
+                st.subheader("注目する語の入力")
+                target_words_input = st.text_area(
+                    "注目する語（カンマ区切り、最大10語）",
+                    "学習,考える,理解,問題,発表"
+                )
+                target_words = [word.strip() for word in target_words_input.split(",")][:10]  # 最大10語に制限
+
+                if target_words:
+                    # 注目語の累積相対度数を可視化
+                    st.subheader("注目語の累積相対度数")
+
+                    fig = visualize_word_cumulative_frequency(df, target_words)
+                    if fig:
+                        st.pyplot(fig)
+
+                        # 図の保存
+                        save_path = save_figure(fig, "word_cumulative_frequency.png")
+                        st.success(f"注目語の累積相対度数グラフを保存しました: {save_path}")
+
+                        # 各単語の出現回数を計算
+                        word_counts = {}
+                        for word in target_words:
+                            count = sum(1 for text in df["発言内容"] if word in text)
+                            word_counts[word] = count
+
+                        # 出現回数の表示
+                        st.subheader("注目語の出現回数")
+                        counts_df = pd.DataFrame(list(word_counts.items()), columns=["単語", "出現回数"])
+                        counts_df = counts_df.sort_values("出現回数", ascending=False)
+                        st.table(counts_df)
+
+                        # 分析結果に追加
+                        analysis_results["注目語出現回数"] = word_counts
+                    else:
+                        st.warning("注目語が発言内容に見つかりませんでした。")
+                else:
+                    st.warning("注目する語を入力してください。")
 
             tab_index += 1
 
